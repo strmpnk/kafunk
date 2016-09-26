@@ -1,22 +1,20 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
   <PropertyGroup>
+    <Name>kafunk</Name>
+    <AssemblyName>Kafunk</AssemblyName>
+    <RootNamespace>kafunk</RootNamespace>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <SchemaVersion>2.0</SchemaVersion>
     <ProjectGuid>18629b6b-ace4-4c73-b058-efa494eb42ce</ProjectGuid>
     <OutputType>Library</OutputType>
-    <RootNamespace>kafunk</RootNamespace>
-    <AssemblyName>Kafunk</AssemblyName>
     <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
     <TargetFSharpCoreVersion>4.3.1.0</TargetFSharpCoreVersion>
-    <Name>kafunk</Name>
-    <TargetFrameworkProfile />
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
-    <DebugType>full</DebugType>
+    <DebugType>Full</DebugType>
     <Optimize>false</Optimize>
     <Tailcalls>false</Tailcalls>
     <OutputPath>.\bin\Debug</OutputPath>
@@ -25,18 +23,40 @@
     <OtherFlags>--warnon:1182</OtherFlags>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
-    <DebugType>pdbonly</DebugType>
+    <DebugType>PdbOnly</DebugType>
     <Optimize>true</Optimize>
     <Tailcalls>true</Tailcalls>
     <OutputPath>.\bin\Release</OutputPath>
     <DefineConstants>TRACE</DefineConstants>
     <WarningLevel>3</WarningLevel>
-    <DocumentationFile>.\bin\Release\kafunk.xml</DocumentationFile>
     <OtherFlags>--warnon:1182 --sig:$(OutputPath)\signatures.fsi</OtherFlags>
   </PropertyGroup>
-  <PropertyGroup>
-    <MinimumVisualStudioVersion Condition="'$(MinimumVisualStudioVersion)' == ''">11</MinimumVisualStudioVersion>
-  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="mscorlib" />
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Numerics" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../../paket-files/logary/logary/src/Logary.Facade/Facade.fs">
+      <Link>Utility/Facade.fs</Link>
+      <Paket>true</Paket>
+    </Compile>
+    <Compile Include="Utility/Prelude.fs" />
+    <Compile Include="Utility/Async.fs" />
+    <Compile Include="Utility/AsyncSeq.fs" />
+    <Compile Include="Utility/Binary.fs" />
+    <Compile Include="Utility/Crc.fs" />
+    <None Include="paket.references" />
+    <None Include="paket.template" />
+    <Compile Include="Protocol.fs" />
+    <Compile Include="Tcp.fs" />
+    <Compile Include="Kafka.fs" />
+    <Compile Include="Compression.fs" />
+    <Compile Include="Producer.fs" />
+    <Compile Include="Consumer.fs" />
+  </ItemGroup>
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
   <Choose>
     <When Condition="'$(VisualStudioVersion)' == '11.0'">
       <PropertyGroup Condition="Exists('$(MSBuildExtensionsPath32)\..\Microsoft SDKs\F#\3.0\Framework\v4.0\Microsoft.FSharp.Targets')">
@@ -50,43 +70,7 @@
     </Otherwise>
   </Choose>
   <Import Project="$(FSharpTargetsPath)" Condition="Exists('$(FSharpTargetsPath)')" />
-  <!-- To modify your build process, add your task inside one of the targets below and uncomment it.
-       Other similar extension points exist, see Microsoft.Common.targets.
-  <Target Name="BeforeBuild">
-  </Target>
-  <Target Name="AfterBuild">
-  </Target>
-  -->
   <Import Project="..\..\.paket\paket.targets" />
-  <ItemGroup>
-    <Compile Include="..\..\paket-files\logary\logary\src\Logary.Facade\Facade.fs">
-      <Paket>True</Paket>
-      <Link>Utility/Facade.fs</Link>
-    </Compile>
-    <None Include="paket.references" />
-    <None Include="paket.template" />
-    <Compile Include="Utility\Prelude.fs" />
-    <Compile Include="Utility\Async.fs" />
-    <Compile Include="Utility\AsyncSeq.fs" />
-    <Compile Include="Utility\Binary.fsi" />
-    <Compile Include="Utility\Binary.fs" />
-    <Compile Include="Utility\Crc.fsi" />
-    <Compile Include="Utility\Crc.fs" />
-    <Compile Include="Utility\DVar.fsi" />
-    <Compile Include="Utility\DVar.fs" />
-    <Compile Include="Protocol.fs" />
-    <Compile Include="Tcp.fs" />
-    <Compile Include="Kafka.fs" />
-    <Compile Include="Compression.fs" />
-    <Compile Include="Producer.fs" />
-    <Compile Include="Consumer.fs" />
-  </ItemGroup>
-  <ItemGroup>
-    <Reference Include="mscorlib" />
-    <Reference Include="System" />
-    <Reference Include="System.Core" />
-    <Reference Include="System.Numerics" />
-  </ItemGroup>
   <Choose>
     <When Condition="$(TargetFrameworkIdentifier) == '.NETFramework' And ($(TargetFrameworkVersion) == 'v2.0' Or $(TargetFrameworkVersion) == 'v3.0' Or $(TargetFrameworkVersion) == 'v3.5')">
       <ItemGroup>
