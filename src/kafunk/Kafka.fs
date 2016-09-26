@@ -149,6 +149,39 @@ module internal ResponseEx =
       | _ -> false
 
 
+  // ------------------------------------------------------------------------------------------------------------------------------
+  // printers
+
+  type MetadataResponse with
+    static member Print (x:MetadataResponse) =
+      let topics =
+        x.topicMetadata
+        |> Seq.map (fun tmd ->
+          let partitions =
+            tmd.partitionMetadata
+            |> Seq.map (fun pmd -> sprintf "[partition_id=%i leader=%i]" pmd.partitionId pmd.leader)
+            |> String.concat " ; "
+          sprintf "[topic=%s partitions=%s]" tmd.topicName partitions)
+        |> String.concat " ; "
+      let brokers =
+        x.brokers
+        |> Seq.map (fun b -> sprintf "[node_id=%i host=%s port=%i]" b.nodeId b.host b.port)
+        |> String.concat " ; "
+      sprintf "MetadataResponse|brokers=%s|topics=%s" brokers topics
+
+  type RequestMessage with
+    static member Print (x:RequestMessage) =
+      sprintf "%A" x
+
+  type ResponseMessage with
+    static member Print (x:ResponseMessage) =
+      match x with
+      | ResponseMessage.MetadataResponse x -> MetadataResponse.Print x
+      | x -> sprintf "%A" x
+
+  // ------------------------------------------------------------------------------------------------------------------------------
+
+
 
 /// API operations on a generic request/reply channel.
 [<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
@@ -158,6 +191,7 @@ module Chan =
 
   let ApiVersion : ApiVersion = 0s
 
+  let send req (ch:Chan) = ch req
 
   let metadata (ch:Chan) (req:Metadata.Request) =
     ch (RequestMessage.Metadata req) |> Async.map (function MetadataResponse x -> x | _ -> wrongResponse ())
@@ -671,11 +705,9 @@ type KafkaConn internal (cfg:KafkaConnCfg) =
     return!
       stateCell
       |> Cell.updateAsync (fun state -> async {
-        Log.info "getting cluster metadata|topics=%s" (String.concat ", " topics)
+        Log.info "getting metadata|topics=%s" (String.concat ", " topics)
         let! metadata = Chan.metadata send (Metadata.Request(topics))
-        Log.info "received cluster metadata|topics=[%s] brokers=[%s]"
-          (String.concat ", " topics)
-          (String.concat "|" (metadata.brokers |> Seq.map (fun b -> sprintf "node_id=%i host=%s" b.nodeId b.host)))
+        Log.info "received metadata|%s" (MetadataResponse.Print metadata)
         return
           state
           |> ConnState.updateRoutes (Routing.Routes.addMetadata metadata) }) }
@@ -695,44 +727,56 @@ type KafkaConn internal (cfg:KafkaConnCfg) =
     let state = Cell.getFastUnsafe stateCell
     match Routing.route state.routes req with
     | Success reqRoutes ->
-      let (req,host) = reqRoutes.[0]
-      match state |> ConnState.tryFindChanByHost host with
-      | Some ch ->
+      Log.info "request routed to routes=%A" reqRoutes
+
+      let sendHost (req:RequestMessage, host:(Host * Port)) = async {
+        match state |> ConnState.tryFindChanByHost host with
+        | Some ch ->
+          return!
+            ch req
+            |> Async.bind (fun res -> async {
+              match RetryAction.tryFindError res with
+              | None -> return res
+              | Some (errorCode,action,msg) ->
+                Log.error "response error_code=%i retry_action=%A message=%s res=%A" errorCode action msg res
+                match action with
+                | RetryAction.Ignore ->
+                  return res
+                | RetryAction.Escalate ->
+                  return failwith "escalating..."
+                | RetryAction.RefreshGroupCoordinator gid ->
+                  let! _ = getGroupCoordinator gid
+                  return! send req
+                | RetryAction.RefreshMetadataAndRetry topics ->
+                  let! _ = getMetadata topics
+                  return! send req
+                | RetryAction.WaitAndRetry ->
+                  do! Async.Sleep 5000
+                  return! send req })
+        | None ->
+          let! _ =
+            stateCell
+            |> Cell.updateAsync (fun state -> async {
+              match state |> ConnState.tryFindChanByHost host with
+              | Some _ -> return state
+              | None ->
+                Log.info "creating channel for host=%A" host
+                let! ch = Chan.connectHost cfg.tcpConfig state.cfg.clientId host
+                return state |> ConnState.addChannel (host,ch) })
+          return! send req }
+
+      match req with
+      | RequestMessage.Offset _ ->
         return!
-          ch req
-          |> Async.bind (fun res -> async {
-            match RetryAction.tryFindError res with
-            | None -> return res
-            | Some (errorCode,action,msg) ->
-              Log.error "response error_code=%i retry_action=%A message=%s res=%A" errorCode action msg res
-              match action with
-              | RetryAction.Ignore ->
-                return res
-              | RetryAction.Escalate ->
-                return failwith "escalating..."
-              | RetryAction.RefreshGroupCoordinator gid ->
-                let! _ = getGroupCoordinator gid
-                return! send req
-              | RetryAction.RefreshMetadataAndRetry topics ->
-                let! _ = getMetadata topics
-                return! send req
-              | RetryAction.WaitAndRetry ->
-                do! Async.Sleep 5000
-                return! send req })
-      | None ->
-        let! _ =
-          stateCell
-          |> Cell.updateAsync (fun state -> async {
-            match state |> ConnState.tryFindChanByHost host with
-            | Some _ -> return state
-            | None ->
-              Log.info "creating channel for host=%A" host
-              let! ch = Chan.connectHost cfg.tcpConfig state.cfg.clientId host
-              return state |> ConnState.addChannel (host,ch) })
-        return! send req
+          reqRoutes
+          |> Seq.map (sendHost)
+          |> Async.Parallel
+          |> Async.map Routing.concatOffsetResponses
+      | _ ->
+        return! sendHost reqRoutes.[0]
 
     | Failure (Routing.MissingTopicRoute topic) ->
-      Log.warn "incorrect topic/partition route, refreshing metadata|topic=%s" topic
+      Log.warn "incorrect topic/partition route, refreshing metadata|topic=%s request=%A" topic req
       let! _ = getMetadata [|topic|]
       return! send req
 
@@ -767,17 +811,12 @@ type KafkaConn internal (cfg:KafkaConnCfg) =
       (stateCell :> IDisposable).Dispose()
 
 
-
-
-
-
-/// Public Kafka API.
+/// Kafka API.
 [<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
 module Kafka =
 
-  let [<Literal>] DefaultPort = 9092
+  let Log = Log.create "Kafunk"
 
-  /// Creates a connection to Kafka by using the given configuration and connects to it asynchronously.
   let connAsync (cfg:KafkaConnCfg) = async {
     let conn = new KafkaConn(cfg)
     do! conn.Connect ()
@@ -789,22 +828,14 @@ module Kafka =
 
   /// Creates a connection to a Kafka host on the default port and connects to it asynchronously.
   let connHostAsync (host:string) =
-    let ub = UriBuilder("kafka", host, DefaultPort)
-    let cfg = KafkaConnCfg.ofBootstrapServers [ub.Uri]
+    let uri = KafkaUri.parse host
+    let cfg = KafkaConnCfg.ofBootstrapServers [uri]
     connAsync cfg
 
   /// Creates a connection to a Kafka host on the default port and connects to it synchronously.
   let connHost host =
     connHostAsync host |> Async.RunSynchronously
 
-  let connHostAndPort host port =
-    let ub = UriBuilder("kafka", host, port)
-    let cfg = KafkaConnCfg.ofBootstrapServers [ub.Uri]
-    let conn = new KafkaConn(cfg)
-    conn.Connect() |> Async.RunSynchronously
-    conn
-
-  /// Retrieves metadata from a Kafka connection.
   let metadata (c:KafkaConn) (req:Metadata.Request) : Async<MetadataResponse> =
     Chan.metadata c.Chan req
 
@@ -821,22 +852,22 @@ module Kafka =
   let groupCoordinator (c:KafkaConn) (req:GroupCoordinatorRequest) : Async<GroupCoordinatorResponse> =
     Chan.groupCoordinator c.Chan req
 
-  let internal offsetCommit (c:KafkaConn) (req:OffsetCommitRequest) : Async<OffsetCommitResponse> =
+  let offsetCommit (c:KafkaConn) (req:OffsetCommitRequest) : Async<OffsetCommitResponse> =
     Chan.offsetCommit c.Chan req
 
-  let internal  offsetFetch (c:KafkaConn) (req:OffsetFetchRequest) : Async<OffsetFetchResponse> =
+  let offsetFetch (c:KafkaConn) (req:OffsetFetchRequest) : Async<OffsetFetchResponse> =
     Chan.offsetFetch c.Chan req
 
-  let internal joinGroup (c:KafkaConn) (req:JoinGroup.Request) : Async<JoinGroup.Response> =
+  let joinGroup (c:KafkaConn) (req:JoinGroup.Request) : Async<JoinGroup.Response> =
     Chan.joinGroup c.Chan req
 
-  let internal syncGroup (c:KafkaConn) (req:SyncGroupRequest) : Async<SyncGroupResponse> =
+  let syncGroup (c:KafkaConn) (req:SyncGroupRequest) : Async<SyncGroupResponse> =
     Chan.syncGroup c.Chan req
 
-  let internal heartbeat (c:KafkaConn) (req:HeartbeatRequest) : Async<HeartbeatResponse> =
+  let heartbeat (c:KafkaConn) (req:HeartbeatRequest) : Async<HeartbeatResponse> =
     Chan.heartbeat c.Chan req
 
-  let internal leaveGroup (c:KafkaConn) (req:LeaveGroupRequest) : Async<LeaveGroupResponse> =
+  let leaveGroup (c:KafkaConn) (req:LeaveGroupRequest) : Async<LeaveGroupResponse> =
     Chan.leaveGroup c.Chan req
 
   let listGroups (c:KafkaConn) (req:ListGroupsRequest) : Async<ListGroupsResponse> =
@@ -844,3 +875,20 @@ module Kafka =
 
   let describeGroups (c:KafkaConn) (req:DescribeGroupsRequest) : Async<DescribeGroupsResponse> =
     Chan.describeGroups c.Chan req
+
+  /// Composite operations.
+  module Composite =
+
+    let topicOffsets (conn:KafkaConn) (time:Time, maxOffsets:MaxNumberOfOffsets) (topic:TopicName) = async {
+      Log.info "getting offset information for topic=%s" topic
+      let! metadata = conn.GetMetadata [|topic|]
+      let topics =
+        metadata
+        |> Map.toSeq
+        |> Seq.map (fun (tn,ps) ->
+          let ps = ps |> Array.map (fun p -> p,time,maxOffsets)
+          tn,ps)
+        |> Seq.toArray
+      let offsetReq = OffsetRequest(-1, topics)
+      let! offsetRes = offset conn offsetReq
+      return offsetRes }
