@@ -136,4 +136,29 @@
       </ItemGroup>
     </When>
   </Choose>
+  <ItemGroup>
+    <None Include="paket.references" />
+    <None Include="paket.template" />
+    <Compile Include="Utility\Prelude.fs" />
+    <Compile Include="Utility\Log.fs" />
+    <Compile Include="Utility\Async.fs" />
+    <Compile Include="Utility\AsyncSeq.fs" />
+    <Compile Include="Utility\Binary.fs" />
+    <Compile Include="Utility\Crc.fs" />
+    <Compile Include="Protocol.fs" />
+    <Compile Include="Tcp.fs" />
+    <Compile Include="Kafka.fs" />
+    <Compile Include="Compression.fs" />
+    <Compile Include="Producer.fs" />
+    <Compile Include="Consumer.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="mscorlib" />
+    <Reference Include="FSharp.Core, Version=$(TargetFSharpCoreVersion), Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a">
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Numerics" />
+  </ItemGroup>
 </Project>
