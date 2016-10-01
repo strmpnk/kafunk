@@ -52,6 +52,7 @@
     <None Include="Producer.fsx" />
     <None Include="Fetch.fsx" />
     <None Include="Consumer.fsx" />
+    <Compile Include="CompressionGzipTests.fs" />
   </ItemGroup>
   <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
   <Choose>
