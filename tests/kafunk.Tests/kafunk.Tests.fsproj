@@ -135,6 +135,30 @@
       </ItemGroup>
     </When>
   </Choose>
+  <ItemGroup>
+    <None Include="paket.references" />
+    <Compile Include="CodecTests.fs" />
+    <Compile Include="TcpTests.fs" />
+    <Compile Include="CompressionGzipTests.fs" />
+    <None Include="Metadata.fsx" />
+    <None Include="Producer.fsx" />
+    <None Include="Fetch.fsx" />
+    <None Include="Consumer.fsx" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="mscorlib" />
+    <Reference Include="FSharp.Core, Version=$(TargetFSharpCoreVersion), Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a">
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Numerics" />
+    <ProjectReference Include="..\..\src\kafunk\kafunk.fsproj">
+      <Name>kafunk</Name>
+      <Project>{18629b6b-ace4-4c73-b058-efa494eb42ce}</Project>
+      <Private>True</Private>
+    </ProjectReference>
+  </ItemGroup>
   <Choose>
     <When Condition="$(TargetFrameworkIdentifier) == '.NETFramework' And ($(TargetFrameworkVersion) == 'v2.0' Or $(TargetFrameworkVersion) == 'v3.0')">
       <ItemGroup>
