@@ -696,7 +696,7 @@ type RetryAction =
       | ErrorCode.NotEnoughReplicasAfterAppendCode | ErrorCode.NotEnoughReplicasCode | ErrorCode.UnknownTopicOrPartition ->
         Some (RetryAction.WaitAndRetry)
 
-      | ErrorCode.NotLeaderForPartition | ErrorCode.UnknownTopicOrPartition
+      | ErrorCode.NotLeaderForPartition | ErrorCode.UnknownTopicOrPartition ->
         Some (RetryAction.RefreshMetadataAndRetry [||])
 
       | ErrorCode.NotCoordinatorForGroupCode | ErrorCode.IllegalGenerationCode ->
